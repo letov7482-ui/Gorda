@@ -364,7 +364,9 @@ public class Aura extends Module {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player == null || mc.world == null) return false;
 
-        if (e.getWorld() != mc.world) return false;
+        // Ensure entity is in the same world as the player.
+        // getEntityWorld() is the correct getter for 1.21.9+ mappings.
+        if (e.getEntityWorld() != mc.world) return false;
 
         // Lag check — skip teleporting / lagging targets
         if (lagCheck.getValue()) {
