@@ -2,14 +2,16 @@ package com.kovak.aura.util;
 
 import com.kovak.aura.AuraClient;
 import com.kovak.aura.module.combat.Aura;
+import com.kovak.aura.module.misc.AntiBot;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.decoration.ArmorStandEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.Comparator;
@@ -21,14 +23,28 @@ public class TargetUtils {
         if (mc.player == null || mc.world == null) return null;
 
         float range = aura.range.getFloat();
-        Box searchBox = mc.player.getBoundingBox().expand(range + 1.0);
+        Box searchBox = mc.player.getBoundingBox().expand(range + 2.0);
 
         List<LivingEntity> candidates = mc.world.getEntitiesByClass(
                 LivingEntity.class, searchBox, e -> isValid(mc, e, aura));
 
-        return candidates.stream()
-                .min(Comparator.comparingDouble(e -> mc.player.squaredDistanceTo(e)))
-                .orElse(null);
+        if (candidates.isEmpty()) return null;
+
+        return candidates.stream().min(buildComparator(mc, aura)).orElse(null);
+    }
+
+    public static boolean isBetter(MinecraftClient mc, LivingEntity current, LivingEntity candidate, Aura aura) {
+        Comparator<LivingEntity> cmp = buildComparator(mc, aura);
+        return cmp.compare(candidate, current) < 0;
+    }
+
+    private static Comparator<LivingEntity> buildComparator(MinecraftClient mc, Aura aura) {
+        return switch (aura.priority.getValue()) {
+            case "Health" -> Comparator.comparingDouble(e -> e.getHealth() + e.getAbsorptionAmount());
+            case "Angle" -> Comparator.comparingDouble(e -> getAngleTo(mc.player, e));
+            case "Armor" -> Comparator.comparingDouble(e -> -getArmorValue((PlayerEntity) e instanceof PlayerEntity p ? p : null));
+            default -> Comparator.comparingDouble(e -> mc.player.squaredDistanceTo(e));
+        };
     }
 
     public static Vec3d getHitboxCenter(Entity entity) {
@@ -45,29 +61,46 @@ public class TargetUtils {
         if (!entity.isAlive() || entity.isDead()) return false;
         if (entity.isInvulnerable()) return false;
         if (entity instanceof ArmorStandEntity) return false;
-        if (entity.hurtTime > 0 && aura.hurtTimeCheck.getValue()) return false;
 
+        // Target mode checks
         if (entity instanceof PlayerEntity player) {
             if (player.isCreative() || player.isSpectator()) return false;
             if (AuraClient.friendManager != null && AuraClient.friendManager.isFriend(player)) return false;
-            if (AuraClient.moduleManager.getModule(com.kovak.aura.module.misc.AntiBot.class).isEnabled()
-                    && com.kovak.aura.module.misc.AntiBot.isBot(player)) return false;
+
+            AntiBot antibot = AuraClient.moduleManager.getModule(AntiBot.class);
+            if (antibot != null && antibot.isEnabled() && AntiBot.isBot(player)) return false;
         } else if (aura.onlyPlayers.getValue()) {
             return false;
         }
 
-        // FOV check for legit mode
-        if (aura.mode.is("Legit")) {
-            float fov = aura.fov.getFloat();
-            if (fov < 360f) {
-                double angle = getAngleTo(mc.player, entity);
-                if (angle > fov / 2f) return false;
+        // Target mode gates
+        switch (aura.targetMode.getValue()) {
+            case "Only Jump" -> {
+                if (entity.isOnGround()) return false;
+            }
+            case "Only Ground" -> {
+                if (!entity.isOnGround()) return false;
+            }
+            case "Only Sprint" -> {
+                if (!entity.isSprinting()) return false;
+            }
+            case "Only Crit" -> {
+                if (mc.player.isOnGround() || mc.player.isTouchingWater()
+                        || mc.player.isClimbing() || mc.player.hasStatusEffect(
+                        net.minecraft.entity.effect.StatusEffects.BLINDNESS)) return false;
             }
         }
 
-        // Reach check
-        double dist = mc.player.getEyePos().distanceTo(entity.getBoundingBox().getCenter());
-        if (dist > aura.range.getFloat()) return false;
+        // Wall check — allow through walls only if aura allows
+        boolean canSee = mc.player.canSee(entity);
+        double effectiveRange = canSee ? aura.range.getValue() : aura.wallsRange.getValue();
+        if (!canSee && !aura.throughWalls.getValue()) return false;
+
+        double distance = mc.player.getEyePos().distanceTo(entity.getBoundingBox().getCenter());
+        if (distance > effectiveRange + 0.3) return false;
+
+        // HurtTime check
+        if (aura.hurtTimeCheck.getValue() && entity.hurtTime > 8) return false;
 
         return true;
     }
@@ -78,6 +111,17 @@ public class TargetUtils {
         double dx = targetPos.x - eyes.x;
         double dz = targetPos.z - eyes.z;
         float yawToTarget = (float)(Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-        return Math.abs(net.minecraft.util.math.MathHelper.wrapDegrees(yawToTarget - from.getYaw()));
+        return Math.abs(MathHelper.wrapDegrees(yawToTarget - from.getYaw()));
     }
-}
+
+    private static int getArmorValue(PlayerEntity player) {
+        if (player == null) return 0;
+        int total = 0;
+        for (EquipmentSlot slot : new EquipmentSlot[]{
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack stack = player.getEquippedStack(slot);
+            if (!stack.isEmpty()) total += 1;
+        }
+        return total;
+    }
+                }
