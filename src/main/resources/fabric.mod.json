@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "auraclient",
+  "version": "${version}",
+  "name": "Aura Client",
+  "description": "Combat automation with silent rotations, ClickGUI, and anticheat bypasses.",
+  "authors": ["Kovak"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/auraclient/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.kovak.aura.AuraClient"]
+  },
+  "mixins": ["auraclient.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.2",
+    "fabric-api": "*",
+    "minecraft": "~1.21.11"
+  }
+}
