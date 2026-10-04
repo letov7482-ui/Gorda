@@ -25,7 +25,7 @@ public class FriendManager {
     }
 
     public boolean isFriend(PlayerEntity player) {
-        return friends.contains(player.getGameProfile().getName().toLowerCase());
+        return friends.contains(player.getName().getString().toLowerCase());
     }
 
     public boolean isFriend(String name) {
@@ -68,4 +68,4 @@ public class FriendManager {
             e.printStackTrace();
         }
     }
-}
+                }
