@@ -13,16 +13,15 @@ public class KeyEventHandler {
                 "key.auraclient.gui",
                 InputUtil.Type.KEYSYM,
                 AuraClient.config.guiKey,
-                "category.auraclient"
+                KeyBinding.Category.MISC
         ));
         AuraClient.moduleManager.setGuiKey(guiKey);
 
-        // Module toggle binds are processed each tick
         net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.player == null) return;
+            if (client.player == null || client.getWindow() == null) return;
             for (var module : AuraClient.moduleManager.getModules()) {
                 if (module.getKeyBind() == -1) continue;
-                while (InputUtil.isKeyPressed(client.getWindow().getHandle(), module.getKeyBind())) {
+                if (InputUtil.isKeyPressed(client.getWindow(), module.getKeyBind())) {
                     module.toggle();
                 }
             }
