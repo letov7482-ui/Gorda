@@ -39,10 +39,11 @@ public class TargetStrafe extends Module {
 
         if (onlyWhileAttacking.getValue() && mc.player.getAttackCooldownProgress(0f) < 0.9f) return;
 
-        Vec3d targetPos = target.getPos();
-        Vec3d playerPos = mc.player.getPos();
+        Vec3d targetPos = target.getEntityPos();
+        Vec3d playerPos = mc.player.getEntityPos();
         Vec3d diff = targetPos.subtract(playerPos);
         double dist = Math.sqrt(diff.x * diff.x + diff.z * diff.z);
+        if (dist < 0.001) return;
 
         // Switch direction periodically
         switchTimer++;
@@ -56,12 +57,11 @@ public class TargetStrafe extends Module {
         // Tangential direction (perpendicular)
         Vec3d tangent = new Vec3d(-radial.z, 0, radial.x).multiply(direction ? 1 : -1);
 
-        // Combine: correct distance + strafe
         double radiusError = dist - radius.getValue();
         Vec3d motion = tangent.multiply(speed.getValue())
-                .add(radial.multiply(-Math.signum(radiusError) * Math.min(Math.abs(radiusError) * 0.3, 0.15)));
+                .add(radial.multiply(-Math.signum(radiusError)
+                        * Math.min(Math.abs(radiusError) * 0.3, 0.15)));
 
         mc.player.addVelocity(motion.x, 0, motion.z);
-        mc.player.velocityModified = true;
     }
-                                }
+}
