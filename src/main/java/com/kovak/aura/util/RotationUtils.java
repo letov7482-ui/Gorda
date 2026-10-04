@@ -2,6 +2,7 @@ package com.kovak.aura.util;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 
@@ -11,18 +12,16 @@ public class RotationUtils {
     private static float silentPitch;
     private static boolean silentActive;
 
-    // Post-attack jitter — prevents "rotation spike then attack" pattern
-    private static float postAttackJitterYaw;
-    private static float postAttackJitterPitch;
+    private static float jitterYaw;
+    private static float jitterPitch;
 
     public static float[] calculate(Entity from, Entity target, boolean predict) {
         Vec3d eyes = from.getEyePos();
         Vec3d point = TargetUtils.getHitboxCenter(target);
 
-        if (predict && target instanceof net.minecraft.entity.LivingEntity le) {
-            // Predict target movement by one tick
+        if (predict && target instanceof LivingEntity le) {
             Vec3d vel = new Vec3d(le.getVelocity().x, 0, le.getVelocity().z);
-            point = point.add(vel.multiply(0.5));
+            point = point.add(vel.multiply(0.7));
         }
 
         double dx = point.x - eyes.x;
@@ -33,43 +32,47 @@ public class RotationUtils {
         float yaw = (float)(Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
         float pitch = (float)(-Math.toDegrees(Math.atan2(dy, dist)));
 
-        // Post-attack jitter — small random deviation
-        yaw += postAttackJitterYaw;
-        pitch += postAttackJitterPitch;
+        yaw += jitterYaw;
+        pitch += jitterPitch;
 
-        return new float[]{yaw, pitch};
+        return new float[]{yaw, MathHelper.clamp(pitch, -90f, 90f)};
     }
 
     /**
-     * Human-like rotation smoothing with GCD snapping.
-     * GrimAC derives sensitivity from GCD of rotation deltas across packets.
-     * By snapping every value to the sensitivity grid, we make every delta
-     * a multiple of the smallest human-possible increment.
+     * Rotate from current to target by at most `speed` degrees per tick.
+     * When difference is small — snap exactly to eliminate oscillation.
      */
-    public static float smooth(float current, float target, float maxStep) {
+    public static float step(float current, float target, float speed) {
         float delta = MathHelper.wrapDegrees(target - current);
-        float step = MathHelper.clamp(delta, -maxStep, maxStep);
-        float result = current + step;
+        float absDelta = Math.abs(delta);
+
+        // Snap when very close — prevents oscillation and "missing" the target
+        if (absDelta < 0.5f) return snapToGcd(target);
+
+        float move = Math.min(absDelta, speed);
+        float result = current + (delta > 0 ? move : -move);
         return snapToGcd(result);
     }
 
-    public static void setSilent(float yaw, float pitch, float speed) {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc.player == null) return;
-        silentYaw = smooth(mc.player.getYaw(), yaw, speed);
-        silentPitch = smooth(mc.player.getPitch(), pitch, speed);
+    /**
+     * Set target rotation for silent aim.
+     * Now takes a speed parameter (deg per tick).
+     */
+    public static void setSilent(float currentYaw, float currentPitch, float targetYaw, float targetPitch, float speed) {
+        silentYaw = step(currentYaw, targetYaw, speed);
+        silentPitch = step(currentPitch, targetPitch, speed);
         silentPitch = MathHelper.clamp(silentPitch, -90f, 90f);
         silentActive = true;
     }
 
     public static void applyPostAttackJitter() {
-        postAttackJitterYaw = (float)((Math.random() - 0.5) * 0.8);
-        postAttackJitterPitch = (float)((Math.random() - 0.5) * 0.5);
+        jitterYaw = (float)((Math.random() - 0.5) * 0.6);
+        jitterPitch = (float)((Math.random() - 0.5) * 0.4);
     }
 
     public static void clearJitter() {
-        postAttackJitterYaw = 0;
-        postAttackJitterPitch = 0;
+        jitterYaw = 0;
+        jitterPitch = 0;
     }
 
     public static float getSilentYaw() { return silentYaw; }
